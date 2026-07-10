@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>飴アンケート</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #faf9f6;
+    --surface: #ffffff;
+    --border: #e8e4dc;
+    --text: #1e1c18;
+    --text-sub: #8a8680;
+    --green: #3b7c2a;
+    --green-light: #e8f5e0;
+    --accent: #5a9e45;
+    --blue: #2a6aad;
+    --blue-light: #e6f0fb;
+  }
+
+  body {
+    font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  header {
+    width: 100%;
+    padding: 0.75rem 1.5rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    text-align: center;
+  }
+  header h1 { font-size: 14px; font-weight: 600; color: var(--text-sub); letter-spacing: 0.05em; }
+
+  .container { width: 100%; max-width: 480px; padding: 1.5rem 1rem 3rem; }
+
+  /* 進捗 */
+  .progress-wrap { margin-bottom: 1.5rem; }
+  .progress-info { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .progress-count { font-size: 13px; color: var(--text-sub); }
+  .progress-pct { font-size: 13px; font-weight: 600; color: var(--accent); }
+  .progress-bar { height: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.4s ease; }
+
+  /* ポケモンカード */
+  .pokemon-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 1.5rem 1.5rem 1.25rem;
+    text-align: center;
+    margin-bottom: 1rem;
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    overflow: hidden;
+  }
+  .pokemon-card.slide-out {
+    opacity: 0;
+    transform: translateX(-24px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  .pokemon-card.slide-in {
+    opacity: 0;
+    transform: translateX(24px);
+    transition: none;
+  }
+  .pokemon-card.slide-in-active {
+    opacity: 1;
+    transform: translateX(0);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .pokemon-icon {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    image-rendering: auto;
+  }
+  .pokemon-icon-placeholder {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+  }
+  .pokemon-name {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+  }
+
+  /* 選択肢ボタン */
+  .choices { display: flex; flex-direction: column; gap: 8px; margin-bottom: 1rem; }
+  .choice-btn {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .choice-btn:hover { border-color: var(--accent); background: var(--green-light); }
+  .choice-btn:active { transform: scale(0.98); }
+  .choice-btn.selected {
+    border-color: var(--blue);
+    background: var(--blue-light);
+    color: var(--blue);
+  }
+  /* A: スケールポン */
+  .choice-btn.pop {
+    animation: btn-pop 0.25s ease forwards;
+  }
+  @keyframes btn-pop {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.045); border-color: var(--green); background: var(--green-light); color: var(--green); }
+    100% { transform: scale(1); }
+  }
+  /* チェックマーク用ラッパー */
+  .choice-btn { position: relative; overflow: hidden; }
+  .choice-icon { font-size: 18px; flex-shrink: 0; width: 24px; text-align: center; }
+  /* C: チェックマーク（ボタン内で右端に表示） */
+  .check-pop {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%) scale(0);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--green);
+    pointer-events: none;
+    animation: check-appear 0.35s ease forwards;
+  }
+  @keyframes check-appear {
+    0%   { transform: translateY(-50%) scale(0); opacity: 0; }
+    30%  { transform: translateY(-50%) scale(1.3); opacity: 1; }
+    70%  { transform: translateY(-50%) scale(1);   opacity: 1; }
+    100% { transform: translateY(-50%) scale(1);   opacity: 0; }
+  }
+
+  /* スキップ・戻る */
+  .nav-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; }
+  .nav-btn {
+    font-size: 12px; color: var(--text-sub); background: none; border: none;
+    cursor: pointer; padding: 4px 8px; border-radius: 6px;
+    transition: color 0.15s;
+  }
+  .nav-btn:hover { color: var(--text); }
+  .nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+  /* 送信確認ポップアップ */
+  .final-submit-popup {
+    position: fixed; inset: 0; background: rgba(30,28,24,0.5);
+    display: none; align-items: flex-end; justify-content: center;
+    z-index: 200; padding-bottom: env(safe-area-inset-bottom);
+  }
+  .final-submit-popup.visible { display: flex; }
+  .final-submit-popup-inner {
+    background: var(--surface);
+    border-radius: 24px 24px 0 0;
+    padding: 2rem 1.5rem 2.5rem;
+    width: 100%; max-width: 480px;
+    text-align: center;
+    position: relative;
+    animation: popup-slide-up 0.3s cubic-bezier(0.34,1.2,0.64,1);
+  }
+  @keyframes popup-slide-up {
+    0%   { transform: translateY(100%); }
+    100% { transform: translateY(0); }
+  }
+  .final-submit-popup-icon { font-size: 40px; margin-bottom: 0.5rem; }
+  .final-submit-popup-title { font-size: 18px; font-weight: 800; color: var(--text); margin-bottom: 0.5rem; }
+  .final-submit-popup-note { font-size: 13px; color: var(--text-sub); margin-bottom: 1.25rem; line-height: 1.6; }
+  .final-submit-popup-btn {
+    width: 100%; padding: 16px;
+    border-radius: 12px; border: none;
+    background: var(--green); color: #fff;
+    font-family: inherit; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .final-submit-popup-btn:hover { background: #2d6020; }
+  .final-submit-popup-close {
+    position: absolute; top: 1rem; right: 1rem;
+    width: 32px; height: 32px; border-radius: 50%;
+    border: none; background: var(--border);
+    font-size: 16px; cursor: pointer; color: var(--text-sub);
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .final-submit-popup-close:hover { background: #d8d4cc; }
+
+  /* 表紙 */
+  .cover-screen {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 2.5rem 1rem 2rem; gap: 1rem; text-align: center;
+  }
+  .cover-screen.hidden { display: none; }
+  .cover-icon { font-size: 52px; }
+  .cover-title { font-size: 22px; font-weight: 800; color: var(--green); line-height: 1.3; }
+  .cover-desc { font-size: 14px; color: var(--text-sub); line-height: 1.8; }
+  .cover-start-btn {
+    margin-top: 0.5rem;
+    width: 100%; max-width: 320px;
+    padding: 16px; border-radius: 12px; border: none;
+    background: var(--green); color: #fff;
+    font-family: inherit; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .cover-start-btn:hover { background: #2d6020; }
+
+  /* 完了画面 */
+  .done-screen {
+    display: none;
+    text-align: center;
+    padding: 3rem 1rem;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .done-screen.visible { display: flex; }
+  .done-icon {
+    font-size: 64px;
+    animation: done-icon-pop 0.6s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes done-icon-pop {
+    0%   { transform: scale(0) rotate(-20deg); opacity: 0; }
+    60%  { transform: scale(1.2) rotate(8deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  }
+  .done-emojis {
+    font-size: 28px;
+    letter-spacing: 6px;
+    animation: done-emojis-in 0.5s ease 0.2s both;
+  }
+  @keyframes done-emojis-in {
+    0%   { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .done-title {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--green);
+    animation: done-title-in 0.5s ease 0.15s both;
+  }
+  @keyframes done-title-in {
+    0%   { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .done-sub {
+    font-size: 14px; color: var(--text-sub); line-height: 1.7;
+    animation: done-title-in 0.5s ease 0.3s both;
+  }
+  .done-count {
+    font-size: 14px; color: var(--accent); font-weight: 700;
+    background: var(--green-light);
+    padding: 8px 16px;
+    border-radius: 99px;
+    animation: done-title-in 0.5s ease 0.4s both;
+  }
+
+  /* 課金属性画面 */
+  .charge-screen {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    gap: 1.5rem;
+    padding-bottom: 1rem;
+  }
+  .charge-screen.visible { display: flex; }
+  .charge-page { display: none; flex-direction: column; gap: 1.5rem; width: 100%; animation: charge-fadein 0.2s ease; }
+  .charge-page.visible { display: flex; }
+  @keyframes charge-fadein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .charge-note { font-size: 11px; color: var(--text-sub); line-height: 1.7; padding: 10px 14px; background: rgba(255,255,255,0.6); border-radius: 12px; }
+  .charge-note-lead { font-size: 13px; font-weight: 600; color: var(--text); display: block; margin-bottom: 6px; }
+  .charge-section { display: flex; flex-direction: column; gap: 8px; }
+  .charge-section-title { font-size: 13px; font-weight: 700; color: var(--text); padding: 0 2px; }
+  .charge-section-subtitle { display: block; font-size: 11px; font-weight: 400; color: var(--text-sub); margin-top: 2px; }
+  .charge-choices { display: flex; flex-direction: column; gap: 5px; }
+  .charge-btn {
+    width: 100%; padding: 13px 14px;
+    border-radius: 10px; border: none;
+    background: var(--surface);
+    font-family: inherit; font-size: 13px; font-weight: 500; color: var(--text);
+    cursor: pointer; text-align: left; transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .charge-btn:hover { background: var(--green-light); color: var(--green); }
+  .charge-btn.selected { background: var(--blue-light); color: var(--blue); font-weight: 700; }
+  .charge-input {
+    width: 100%; padding: 13px 14px; border-radius: 10px; border: none;
+    background: var(--surface); font-family: inherit; font-size: 14px;
+    color: var(--text); outline: none; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .charge-input-note { font-size: 11px; color: var(--text-sub); padding: 0 2px; }
+  .charge-next-btn {
+    width: 100%; padding: 15px; border-radius: 12px; border: none;
+    background: var(--green); color: #fff; font-family: inherit;
+    font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.15s;
+  }
+  .charge-next-btn:hover { background: #2d6020; }
+  .charge-back-link { font-size: 12px; color: var(--text-sub); background: none; border: none; cursor: pointer; padding: 4px 8px; text-align: center; width: 100%; font-family: inherit; }
+  .charge-skip-all { font-size: 12px; color: var(--text-sub); background: none; border: none; cursor: pointer; padding: 4px 8px; text-align: center; width: 100%; font-family: inherit; }
+
+  /* ローディング */
+  .sending-overlay {
+    position: fixed; inset: 0; background: rgba(250,249,246,0.92);
+    display: none; align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px; z-index: 100;
+  }
+  .sending-overlay.visible { display: flex; }
+  .sending-now-loading {
+    font-size: 20px; font-weight: 800; letter-spacing: 0.08em;
+    color: var(--accent);
+    animation: blink 1.1s ease-in-out infinite;
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.15; }
+  }
+  .sending-main { font-size: 15px; font-weight: 600; color: var(--text); }
+  .sending-sub { font-size: 11px; color: var(--text-sub); text-align: center; line-height: 1.6; }
+
+  /* 重複警告 */
+  .already-done {
+    display: none;
+    text-align: center;
+    padding: 3rem 1rem;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+  .already-done.visible { display: flex; }
+  .already-done-icon { font-size: 48px; }
+  .already-done-title { font-size: 18px; font-weight: 700; }
+  .already-done-sub { font-size: 14px; color: var(--text-sub); line-height: 1.7; }
+  .retry-btn {
+    padding: 12px 24px; border-radius: 12px; border: 1.5px solid var(--border);
+    background: var(--surface); font-family: inherit; font-size: 14px;
+    font-weight: 600; color: var(--text); cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>飴アンケート</h1>
+</header>
+
+<div class="container" id="main-container">
+
+  <!-- 表紙 -->
+  <div class="cover-screen" id="cover-screen">
+    <div class="cover-icon">🍬</div>
+    <div class="cover-title">ポケモンスリープ<br>飴需要アンケート</div>
+    <div class="cover-desc">各ポケモンの飴が送られてきた場合の<br>あなたの感覚を教えてください。<br><br>途中で回答を停止しても回答は保存され、<br>再開可能です。<br><br>選択肢はランダムな順番で表示されます。</div>
+    <button class="cover-start-btn" onclick="startSurvey()">回答をはじめる →</button>
+  </div>
+
+  <!-- 送信済み画面 -->
+  <div class="already-done" id="already-done">
+    <div class="already-done-icon">📋</div>
+    <div class="already-done-title">回答済みです</div>
+    <div class="already-done-sub">このブラウザからはすでに回答が送信されています。<br>もう一度回答したい場合は下のボタンを押してください。</div>
+    <button class="retry-btn" onclick="resetAndStart()">もう一度回答する</button>
+  </div>
+
+  <!-- 課金属性画面 -->
+  <div class="charge-screen" id="charge-screen">
+    <div class="charge-note">
+      <span class="charge-note-lead">アンケートおつかれさまでした。あと2ページだけ。</span>
+      いずれ属性別になにかが出せるかもしれないし出せないかもしれないアンケートです。どれか悩んだら自認で・なんとなくで選択してOKです。スキップしてもOKです。回答時間と回答結果以外の個人情報は収集していません。
+    </div>
+
+    <!-- ページ1 -->
+    <div class="charge-page visible" id="charge-page-1">
+      <div class="charge-section">
+        <div class="charge-section-title">💰 毎月のおおよその課金額</div>
+        <div class="charge-choices">
+          <button class="charge-btn" onclick="selectChargeItem('amount',0,this)">無課金</button>
+          <button class="charge-btn" onclick="selectChargeItem('amount',1,this)">プレパスのみ</button>
+          <button class="charge-btn" onclick="selectChargeItem('amount',2,this)">プレパス＋たまにパック</button>
+          <button class="charge-btn" onclick="selectChargeItem('amount',3,this)">〜5,000円</button>
+          <button class="charge-btn" onclick="selectChargeItem('amount',4,this)">〜10,000円</button>
+          <button class="charge-btn" onclick="selectChargeItem('amount',5,this)">〜20,000円</button>
+          <button class="charge-btn" onclick="selectChargeItem('amount',6,this)">〜30,000円</button>
+          <button class="charge-btn" onclick="selectChargeItem('amount',7,this)">〜50,000円</button>
+          <button class="charge-btn" onclick="selectChargeItem('amount',8,this)">50,000円〜</button>
+        </div>
+      </div>
+      <div class="charge-section">
+        <div class="charge-section-title">📅 ポケスリ歴</div>
+        <div class="charge-choices">
+          <button class="charge-btn" onclick="selectChargeItem('history',0,this)">初期勢</button>
+          <button class="charge-btn" onclick="selectChargeItem('history',1,this)">2年ほど</button>
+          <button class="charge-btn" onclick="selectChargeItem('history',2,this)">開始1年以内</button>
+        </div>
+      </div>
+      <div class="charge-section">
+        <div class="charge-section-title">🐾 仲間にしたポケモン数<span class="charge-section-subtitle">アチーブメントの詳細からご確認ください</span></div>
+        <input class="charge-input" type="number" id="charge-pokemon-count" placeholder="例：2400" min="0" max="99900" step="100" oninput="saveChargeInput()">
+        <div class="charge-input-note">最後の2桁を00にして入力してください（例：2438→2400）</div>
+      </div>
+      <button class="charge-next-btn" onclick="goChargePage2()">次へ →</button>
+      <button class="charge-back-link" onclick="backToSurveyFromCharge()">← ポケモンの回答に戻る</button>
+      <button class="charge-skip-all" onclick="showFinalSubmitPopup()">全部スキップして完了する</button>
+    </div>
+
+    <!-- ページ2 -->
+    <div class="charge-page" id="charge-page-2">
+      <div class="charge-section">
+        <div class="charge-section-title">🎁 限定パック</div>
+        <div class="charge-choices">
+          <button class="charge-btn" onclick="selectChargeItem('limited',0,this)">ほぼ買わない</button>
+          <button class="charge-btn" onclick="selectChargeItem('limited',1,this)">お得なやつは買う</button>
+          <button class="charge-btn" onclick="selectChargeItem('limited',2,this)">だいたい全買い</button>
+        </div>
+      </div>
+      <div class="charge-section">
+        <div class="charge-section-title">🛒 常設パック</div>
+        <div class="charge-choices">
+          <button class="charge-btn" onclick="selectChargeItem('regular',0,this)">買わない</button>
+          <button class="charge-btn" onclick="selectChargeItem('regular',1,this)">おまけ付き3回だけ買う</button>
+          <button class="charge-btn" onclick="selectChargeItem('regular',2,this)">おまけなくなっても買う</button>
+        </div>
+      </div>
+      <div class="charge-section">
+        <div class="charge-section-title">🍪 ハイパーサブレ</div>
+        <div class="charge-choices">
+          <button class="charge-btn" onclick="selectChargeItem('hyper',0,this)">買わない</button>
+          <button class="charge-btn" onclick="selectChargeItem('hyper',1,this)">たまに買う</button>
+          <button class="charge-btn" onclick="selectChargeItem('hyper',2,this)">全買い</button>
+        </div>
+      </div>
+      <button class="charge-next-btn" onclick="showFinalSubmitPopup()">完了する ✓</button>
+      <button class="charge-back-link" onclick="goChargePage1()">← 前のページに戻る</button>
+    </div>
+  </div>
+
+  <!-- 進捗 -->
+  <div class="progress-wrap" id="progress-wrap">
+    <div class="progress-info">
+      <span class="progress-count" id="progress-count">1 / 100</span>
+      <span class="progress-pct" id="progress-pct">0%</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- ポケモンカード -->
+  <div class="pokemon-card" id="pokemon-card">
+    <img class="pokemon-icon" id="pokemon-icon" src="" alt="" onerror="this.style.display='none';document.getElementById('pokemon-icon-fallback').style.display='flex'">
+    <div class="pokemon-icon-placeholder" id="pokemon-icon-fallback" style="display:none">🐾</div>
+    <div class="pokemon-name" id="pokemon-name"></div>
+  </div>
+
+  <!-- 選択肢 -->
+  <div class="choices" id="choices">
+    <button class="choice-btn" onclick="answer(0)"><span class="choice-icon">⭐</span>もっと欲しい（集めてる）</button>
+    <button class="choice-btn" onclick="answer(1)"><span class="choice-icon">😊</span>嬉しい</button>
+    <button class="choice-btn" onclick="answer(2)"><span class="choice-icon">😐</span>どちらでもいい</button>
+    <button class="choice-btn" onclick="answer(3)"><span class="choice-icon">😅</span>許せるが欲しくはない</button>
+    <button class="choice-btn" onclick="answer(4)"><span class="choice-icon">🙅</span>送ってほしくない</button>
+  </div>
+
+  <div class="nav-row" id="nav-row">
+    <button class="nav-btn" id="btn-back" onclick="goBack()" disabled>← 前に戻る</button>
+    <button class="nav-btn" id="btn-skip" onclick="skip()">スキップ →</button>
+  </div>
+
+  <!-- 完了画面 -->
+  <div class="done-screen" id="done-screen">
+    <div class="done-icon">🎉</div>
+    <div class="done-title">おつかれさまでした！</div>
+    <div class="done-emojis">✨🎊💚🌟✨</div>
+    <div class="done-sub">回答はスプレッドシートに保存されました。<br>ご協力ありがとうございます！</div>
+    <div class="done-count" id="done-count"></div>
+  </div>
+
+</div>
+
+<!-- 送信確認ポップアップ -->
+<div class="final-submit-popup" id="final-submit-popup">
+  <div class="final-submit-popup-inner">
+    <button class="final-submit-popup-close" onclick="document.getElementById('final-submit-popup').classList.remove('visible')">✕</button>
+    <div class="final-submit-popup-icon">📩</div>
+    <div class="final-submit-popup-title">回答を送信しますか？</div>
+    <div class="final-submit-popup-note">送信には少し時間がかかる場合があります。<br>送信中はページを閉じないでください。</div>
+    <button class="final-submit-popup-btn" onclick="finishCharge()">送信する</button>
+  </div>
+</div>
+
+<!-- 送信中オーバーレイ -->
+<div class="sending-overlay" id="sending-overlay">
+  <div class="sending-now-loading">NOW LOADING...</div>
+  <div class="sending-main">あなたの回答を集計しています</div>
+  <div class="sending-sub">（スプレッドシート集計のため<br>処理に時間がかかります）</div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbx45Ab0Npm57ZPBHd7pdKvqEjRvbYnOswoTy4aJG94F8MT9FzJeRR90LnJ_0oEsvkzvBA/exec';
+const STORAGE_KEY = 'ame_survey_2026_done';
+const STORAGE_ANSWERS_KEY = 'ame_survey_2026_answers';
+const STORAGE_ORDER_KEY = 'ame_survey_2026_order';
+const STORAGE_CURRENT_KEY = 'ame_survey_2026_current';
+const STORAGE_RESULT_KEY = 'ame_survey_2026_result';
+const STORAGE_CHARGE_KEY = 'ame_survey_2026_charge';
+
+const SCORES = [7, 3, 0, -3, -7];
+const LABELS = ['もっと欲しい（集めてる）', '嬉しい', 'どちらでもいい', '許せるが欲しくはない', '送ってほしくない'];
+
+const pokemon = [
+  {id:1,name:'フシギダネ',img:'icons/0001.png'},
+  {id:4,name:'ヒトカゲ',img:'icons/0004.png'},
+  {id:7,name:'ゼニガメ',img:'icons/0007.png'},
+  {id:10,name:'キャタピー',img:'icons/0010.png'},
+  {id:19,name:'コラッタ',img:'icons/0019.png'},
+  {id:23,name:'アーボ',img:'icons/0023.png'},
+  {id:27,name:'サンド',img:'icons/0027.png'},
+  {id:37,name:'ロコン',img:'icons/0037.png'},
+  {id:50,name:'ディグダ',img:'icons/0050.png'},
+  {id:52,name:'ニャース',img:'icons/0052.png'},
+  {id:54,name:'コダック',img:'icons/0054.png'},
+  {id:56,name:'マンキー',img:'icons/0056.png'},
+  {id:58,name:'ガーディ',img:'icons/0058.png'},
+  {id:69,name:'マダツボミ',img:'icons/0069.png'},
+  {id:74,name:'イシツブテ',img:'icons/0074.png'},
+  {id:79,name:'ヤドン',img:'icons/0079.png'},
+  {id:81,name:'コイル',img:'icons/0081.png'},
+  {id:83,name:'カモネギ',img:'icons/0083.png'},
+  {id:84,name:'ドードー',img:'icons/0084.png'},
+  {id:92,name:'ゴース',img:'icons/0092.png'},
+  {id:95,name:'イワーク',img:'icons/0095.png'},
+  {id:104,name:'カラカラ',img:'icons/0104.png'},
+  {id:115,name:'ガルーラ',img:'icons/0115.png'},
+  {id:127,name:'カイロス',img:'icons/0127.png'},
+  {id:132,name:'メタモン',img:'icons/0132.png'},
+  {id:133,name:'イーブイ',img:'icons/0133.png'},
+  {id:147,name:'ミニリュウ',img:'icons/0147.png'},
+  {id:151,name:'ミュウ',img:'icons/0151.png'},
+  {id:152,name:'チコリータ',img:'icons/0152.png'},
+  {id:155,name:'ヒノアラシ',img:'icons/0155.png'},
+  {id:158,name:'ワニノコ',img:'icons/0158.png'},
+  {id:25,name:'ピカチュウ',img:'icons/0025.png'},
+  {id:35,name:'ピッピ',img:'icons/0035.png'},
+  {id:39,name:'プリン',img:'icons/0039.png'},
+  {id:175,name:'トゲピー',img:'icons/0175.png'},
+  {id:177,name:'ネイティ',img:'icons/0177.png'},
+  {id:179,name:'メリープ',img:'icons/0179.png'},
+  {id:194,name:'ウパー',img:'icons/0194.png'},
+  {id:198,name:'ヤミカラス',img:'icons/0198.png'},
+  {id:213,name:'ツボツボ',img:'icons/0213.png'},
+  {id:214,name:'ヘラクロス',img:'icons/0214.png'},
+  {id:215,name:'ニューラ',img:'icons/0215.png'},
+  {id:225,name:'デリバード',img:'icons/0225.png'},
+  {id:228,name:'デルビル',img:'icons/0228.png'},
+  {id:243,name:'ライコウ',img:'icons/0243.png'},
+  {id:244,name:'エンテイ',img:'icons/0244.png'},
+  {id:245,name:'スイクン',img:'icons/0245.png'},
+  {id:246,name:'ヨーギラス',img:'icons/0246.png'},
+  {id:252,name:'キモリ',img:'icons/0252.png'},
+  {id:255,name:'アチャモ',img:'icons/0255.png'},
+  {id:258,name:'ミズゴロウ',img:'icons/0258.png'},
+  {id:280,name:'ラルトス',img:'icons/0280.png'},
+  {id:287,name:'ナマケロ',img:'icons/0287.png'},
+  {id:302,name:'ヤミラミ',img:'icons/0302.png'},
+  {id:303,name:'クチート',img:'icons/0303.png'},
+  {id:304,name:'ココドラ',img:'icons/0304.png'},
+  {id:311,name:'プラスル',img:'icons/0311.png'},
+  {id:312,name:'マイナン',img:'icons/0312.png'},
+  {id:316,name:'ゴクリン',img:'icons/0316.png'},
+  {id:328,name:'ナックラー',img:'icons/0328.png'},
+  {id:333,name:'チルット',img:'icons/0333.png'},
+  {id:353,name:'カゲボウズ',img:'icons/0353.png'},
+  {id:359,name:'アブソル',img:'icons/0359.png'},
+  {id:202,name:'ソーナンス',img:'icons/0202.png'},
+  {id:363,name:'タマザラシ',img:'icons/0363.png'},
+  {id:371,name:'タツベイ',img:'icons/0371.png'},
+  {id:380,name:'ラティアス',img:'icons/0380.png'},
+  {id:381,name:'ラティオス',img:'icons/0381.png'},
+  {id:403,name:'コリンク',img:'icons/0403.png'},
+  {id:425,name:'フワンテ',img:'icons/0425.png'},
+  {id:185,name:'ウソッキー',img:'icons/0185.png'},
+  {id:122,name:'バリヤード',img:'icons/0122.png'},
+  {id:113,name:'ラッキー',img:'icons/0113.png'},
+  {id:442,name:'ミカルゲ',img:'icons/0442.png'},
+  {id:448,name:'ルカリオ',img:'icons/0448.png'},
+  {id:453,name:'グレッグル',img:'icons/0453.png'},
+  {id:459,name:'ユキカブリ',img:'icons/0459.png'},
+  {id:488,name:'クレセリア',img:'icons/0488.png'},
+  {id:491,name:'ダークライ',img:'icons/0491.png'},
+  {id:517,name:'ムンナ',img:'icons/0517.png'},
+  {id:557,name:'イシズマイ',img:'icons/0557.png'},
+  {id:627,name:'ワシボン',img:'icons/0627.png'},
+  {id:696,name:'チゴラス',img:'icons/0696.png'},
+  {id:702,name:'デデンネ',img:'icons/0702.png'},
+  {id:710,name:'バケッチャ',img:'icons/0710.png'},
+  {id:714,name:'オンバット',img:'icons/0714.png'},
+  {id:736,name:'アゴジムシ',img:'icons/0736.png'},
+  {id:742,name:'アブリー',img:'icons/0742.png'},
+  {id:759,name:'ヌイコグマ',img:'icons/0759.png'},
+  {id:764,name:'キュワワー',img:'icons/0764.png'},
+  {id:777,name:'トゲデマル',img:'icons/0777.png'},
+  {id:778,name:'ミミッキュ',img:'icons/0778.png'},
+  {id:780,name:'ジジーロン',img:'icons/0780.png'},
+  {id:845,name:'ウッウ',img:'icons/0845.png'},
+  {id:848,name:'エレズン',img:'icons/0848.png'},
+  {id:906,name:'ニャオハ',img:'icons/0906.png'},
+  {id:909,name:'ホゲータ',img:'icons/0909.png'},
+  {id:912,name:'クワッス',img:'icons/0912.png'},
+  {id:921,name:'パモ',img:'icons/0921.png'},
+  {id:974,name:'アルクジラ',img:'icons/0974.png'}
+];
+
+function shuffle(arr) {
+  const a = [...arr];
+  for(let i = a.length-1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i+1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// 前回の順序を復元、なければ新たにシャッフル
+let shuffled;
+const savedOrder = localStorage.getItem(STORAGE_ORDER_KEY);
+if(savedOrder) {
+  try {
+    const order = JSON.parse(savedOrder);
+    shuffled = order.map(id => pokemon.find(p => p.id === id)).filter(Boolean);
+  } catch(e) { shuffled = shuffle(pokemon); }
+} else {
+  shuffled = shuffle(pokemon);
+  localStorage.setItem(STORAGE_ORDER_KEY, JSON.stringify(shuffled.map(p => p.id)));
+}
+
+let current = 0;
+let answers = {};
+
+// 前回の回答を復元
+const savedAnswers = localStorage.getItem(STORAGE_ANSWERS_KEY);
+if(savedAnswers) {
+  try { answers = JSON.parse(savedAnswers); } catch(e) {}
+}
+
+// 前回の進行位置を復元
+const savedCurrent = localStorage.getItem(STORAGE_CURRENT_KEY);
+if(savedCurrent) {
+  try { current = Math.min(parseInt(savedCurrent), shuffled.length - 1); } catch(e) {}
+}
+
+function hideSurvey() {
+  document.getElementById('progress-wrap').style.display = 'none';
+  document.getElementById('pokemon-card').style.display = 'none';
+  document.getElementById('choices').style.display = 'none';
+  document.getElementById('nav-row').style.display = 'none';
+}
+
+function showSurvey() {
+  document.getElementById('progress-wrap').style.display = '';
+  document.getElementById('pokemon-card').style.display = '';
+  document.getElementById('choices').style.display = '';
+  document.getElementById('nav-row').style.display = '';
+}
+
+// 課金属性の回答
+const chargeData = { amount: null, history: null, pokemonCount: null, limited: null, regular: null, hyper: null };
+
+function startSurvey() {
+  document.getElementById('cover-screen').classList.add('hidden');
+  showSurvey();
+  showPokemon(current);
+}
+
+function selectChargeItem(key, idx, btn) {
+  const parent = btn.closest('.charge-choices') || btn.parentElement;
+  parent.querySelectorAll('.charge-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  chargeData[key] = btn.textContent.trim();
+}
+
+function saveChargeInput() {
+  chargeData.pokemonCount = document.getElementById('charge-pokemon-count').value || null;
+}
+
+function goChargePage1() {
+  document.getElementById('charge-page-2').classList.remove('visible');
+  document.getElementById('charge-page-1').classList.add('visible');
+}
+
+function goChargePage2() {
+  document.getElementById('charge-page-1').classList.remove('visible');
+  document.getElementById('charge-page-2').classList.add('visible');
+}
+
+function backToSurveyFromCharge() {
+  chargeData.pokemonCount = document.getElementById('charge-pokemon-count').value || null;
+
+  document.getElementById('charge-screen').classList.remove('visible');
+  document.getElementById('pokemon-card').style.display = '';
+  document.getElementById('choices').style.display = '';
+  document.getElementById('nav-row').style.display = '';
+  document.getElementById('progress-wrap').style.display = '';
+
+  showPokemon(current);
+}
+
+function showFinalSubmitPopup() {
+  chargeData.pokemonCount = document.getElementById('charge-pokemon-count').value || null;
+  document.getElementById('final-submit-popup').classList.add('visible');
+}
+
+async function finishCharge() {
+  document.getElementById('final-submit-popup').classList.remove('visible');
+
+  const answered = Object.entries(answers).map(([idx, choiceIdx]) => {
+    const p = shuffled[parseInt(idx)];
+    return {
+      id: p.id,
+      name: p.name,
+      answer: LABELS[choiceIdx],
+      score: SCORES[choiceIdx]
+    };
+  });
+
+  document.getElementById('charge-screen').classList.remove('visible');
+  document.querySelector('header h1').textContent = '飴アンケート';
+  document.body.style.background = '';
+
+  const overlay = document.getElementById('sending-overlay');
+  overlay.classList.add('visible');
+
+  try {
+    await fetch(GAS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers: answered, charge: chargeData })
+    });
+
+    // 送信済みフラグをローカルに保存
+    localStorage.setItem(STORAGE_KEY, 'done');
+    // tier表生成用に、軽量な結果だけは残しておく（生の回答データは消す）
+    localStorage.setItem(STORAGE_RESULT_KEY, JSON.stringify(answered.map(a => ({id: a.id, score: a.score}))));
+    localStorage.removeItem(STORAGE_ANSWERS_KEY);
+    localStorage.removeItem(STORAGE_CURRENT_KEY);
+    localStorage.removeItem(STORAGE_ORDER_KEY);
+
+    overlay.classList.remove('visible');
+    showDoneScreen(answered.length);
+
+  } catch(err) {
+    overlay.classList.remove('visible');
+    alert('送信に失敗しました。もう一度お試しください。');
+    // 再送信できるよう課金属性画面に戻す
+    document.getElementById('charge-screen').classList.add('visible');
+  }
+}
+
+function showDoneScreen(count) {
+  const done = document.getElementById('done-screen');
+  done.classList.add('visible');
+  const cnt = count || parseInt(document.getElementById('done-count').textContent) || 0;
+  document.getElementById('done-count').textContent = cnt ? `${cnt}匹分の回答を送信しました` : '';
+}
+
+function init() {
+  hideSurvey();
+
+  // 送信済みチェック
+  if(localStorage.getItem(STORAGE_KEY) === 'done') {
+    document.getElementById('cover-screen').classList.add('hidden');
+    document.getElementById('already-done').classList.add('visible');
+    return;
+  }
+
+  // 続きがあればボタンテキストを変える
+  const hasSaved = localStorage.getItem(STORAGE_CURRENT_KEY);
+  if(hasSaved && parseInt(hasSaved) > 0) {
+    document.querySelector('.cover-start-btn').textContent = '続きから回答する →';
+  }
+}
+
+function resetAndStart() {
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(STORAGE_ANSWERS_KEY);
+  localStorage.removeItem(STORAGE_ORDER_KEY);
+  localStorage.removeItem(STORAGE_CURRENT_KEY);
+  localStorage.removeItem(STORAGE_CHARGE_KEY);
+  localStorage.removeItem(STORAGE_RESULT_KEY);
+  chargeAnswer = null;
+  shuffled = shuffle(pokemon);
+  localStorage.setItem(STORAGE_ORDER_KEY, JSON.stringify(shuffled.map(p => p.id)));
+  answers = {};
+  current = 0;
+  document.getElementById('already-done').classList.remove('visible');
+  document.getElementById('cover-screen').classList.remove('hidden');
+  document.querySelector('.cover-start-btn').textContent = '回答をはじめる →';
+  hideSurvey();
+}
+
+function preloadImages(idx) {
+  for(let i = 1; i <= 3; i++) {
+    const next = shuffled[idx + i];
+    if(next) { const img = new Image(); img.src = next.img; }
+  }
+}
+
+function showPokemon(idx) {
+  const p = shuffled[idx];
+
+  // アイコン
+  const iconEl = document.getElementById('pokemon-icon');
+  const fallbackEl = document.getElementById('pokemon-icon-fallback');
+  iconEl.style.display = '';
+  fallbackEl.style.display = 'none';
+  iconEl.src = p.img;
+  iconEl.alt = p.name;
+
+  // 次3枚を先読み
+  preloadImages(idx);
+
+  document.getElementById('pokemon-name').textContent = p.name;
+
+  const pct = Math.round((idx / shuffled.length) * 100);
+  document.getElementById('progress-count').textContent = `${idx + 1} / ${shuffled.length}`;
+  document.getElementById('progress-pct').textContent = `${pct}%`;
+  document.getElementById('progress-fill').style.width = `${pct}%`;
+
+  document.querySelectorAll('.choice-btn').forEach(b => b.classList.remove('selected'));
+  if(answers[idx] !== undefined) {
+    document.querySelectorAll('.choice-btn')[answers[idx]].classList.add('selected');
+  }
+
+  document.getElementById('btn-back').disabled = (idx === 0);
+
+  const isLast = (idx === shuffled.length - 1);
+  document.getElementById('btn-skip').style.display = isLast ? 'none' : '';
+}
+
+function answer(choiceIdx) {
+  answers[current] = choiceIdx;
+  localStorage.setItem(STORAGE_ANSWERS_KEY, JSON.stringify(answers));
+  localStorage.setItem(STORAGE_CURRENT_KEY, current);
+
+  const btns = document.querySelectorAll('.choice-btn');
+
+  // A: スケールポン + C: チェックマーク
+  btns.forEach((b, i) => {
+    b.classList.remove('selected', 'pop');
+    // 既存チェックを削除
+    const old = b.querySelector('.check-pop');
+    if(old) old.remove();
+
+    if(i === choiceIdx) {
+      // スケールポン
+      void b.offsetWidth; // reflow
+      b.classList.add('pop');
+
+      // チェックマーク飛び出し
+      const check = document.createElement('span');
+      check.className = 'check-pop';
+      check.textContent = '✓';
+      b.appendChild(check);
+      setTimeout(() => check.remove(), 400);
+    }
+  });
+
+  // 250ms後にカードスライドアウト
+  setTimeout(() => {
+    const card = document.getElementById('pokemon-card');
+    card.classList.add('slide-out');
+
+    setTimeout(() => {
+      // ボタンのpopクラスをクリア
+      btns.forEach(b => b.classList.remove('pop'));
+
+      if(current < shuffled.length - 1) {
+        current++;
+        card.classList.remove('slide-out');
+        card.classList.add('slide-in');
+        requestAnimationFrame(() => {
+          // 非表示になってから内容更新＆ボタンリセット
+          btns.forEach(b => {
+            b.classList.remove('pop', 'selected');
+            const old = b.querySelector('.check-pop');
+            if(old) old.remove();
+          });
+          showPokemon(current);
+          requestAnimationFrame(() => {
+            card.classList.remove('slide-in');
+            card.classList.add('slide-in-active');
+            setTimeout(() => card.classList.remove('slide-in-active'), 200);
+          });
+        });
+      } else {
+        card.classList.remove('slide-out');
+        submitAll();
+      }
+    }, 150);
+  }, 250);
+}
+
+function skip() {
+  if(current < shuffled.length - 1) {
+    current++;
+    localStorage.setItem(STORAGE_CURRENT_KEY, current);
+    showPokemon(current);
+  }
+}
+
+function goBack() {
+  if(current > 0) {
+    current--;
+    localStorage.setItem(STORAGE_CURRENT_KEY, current);
+    showPokemon(current);
+  }
+}
+
+function submitAll() {
+  const answeredCount = Object.keys(answers).length;
+
+  if(answeredCount === 0) {
+    alert('まだ回答がありません。');
+    return;
+  }
+
+  document.getElementById('pokemon-card').style.display = 'none';
+  document.getElementById('choices').style.display = 'none';
+  document.getElementById('nav-row').style.display = 'none';
+  document.getElementById('progress-wrap').style.display = 'none';
+
+  // 飴アンケートと課金属性アンケートをまとめて1回で送信するため、
+  // ここではまだGASに送信せず、課金属性画面に進むだけ
+  document.getElementById('charge-screen').classList.add('visible');
+}
+
+init();
+</script>
+</body>
+</html>
