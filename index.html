@@ -362,6 +362,51 @@
     background: var(--surface); font-family: inherit; font-size: 14px;
     font-weight: 600; color: var(--text); cursor: pointer;
   }
+  .tier-btn {
+    padding: 14px 24px; border-radius: 12px; border: none;
+    background: var(--green); color: #fff; font-family: inherit; font-size: 15px;
+    font-weight: 700; cursor: pointer; transition: background 0.15s;
+  }
+  .tier-btn:hover { background: #2d6020; }
+
+  /* Tier表画面 */
+  .tier-screen {
+    position: fixed; inset: 0; background: var(--bg);
+    display: none; flex-direction: column;
+    z-index: 300; overflow-y: auto;
+  }
+  .tier-screen.visible { display: flex; }
+  .tier-screen-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
+    background: var(--surface); position: sticky; top: 0; z-index: 1;
+  }
+  .tier-screen-title { font-size: 16px; font-weight: 800; color: var(--text); }
+  .tier-screen-close {
+    width: 32px; height: 32px; border-radius: 50%; border: none;
+    background: var(--border); font-size: 16px; cursor: pointer; color: var(--text-sub);
+  }
+  .tier-table-wrap { padding: 1rem; }
+  .tier-table { display: flex; flex-direction: column; background: #000; }
+  .tier-row { display: flex; min-height: 56px; }
+  .tier-label {
+    width: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 18px; color: #1a1a1a; border: 1px solid #000;
+  }
+  .tier-icons {
+    flex: 1; display: flex; flex-wrap: wrap; align-content: flex-start;
+    gap: 2px; padding: 4px; background: #17171a; border: 1px solid #000;
+  }
+  .tier-icons img {
+    width: 44px; height: 44px; object-fit: contain;
+    background: #222; border-radius: 4px;
+  }
+  .tier-empty-note { font-size: 11px; color: var(--text-sub); padding: 1rem 0.25rem 0; text-align: center; }
+  .tier-save-btn {
+    margin: 1rem; padding: 14px; border-radius: 12px; border: none;
+    background: var(--green); color: #fff; font-family: inherit; font-size: 15px;
+    font-weight: 700; cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -385,6 +430,7 @@
     <div class="already-done-icon">📋</div>
     <div class="already-done-title">回答済みです</div>
     <div class="already-done-sub">このブラウザからはすでに回答が送信されています。<br>もう一度回答したい場合は下のボタンを押してください。</div>
+    <button class="tier-btn" onclick="openTierScreen()">🏆 自分の飴Tier表を作る</button>
     <button class="retry-btn" onclick="resetAndStart()">もう一度回答する</button>
   </div>
 
@@ -499,6 +545,7 @@
     <div class="done-emojis">✨🎊💚🌟✨</div>
     <div class="done-sub">回答はスプレッドシートに保存されました。<br>ご協力ありがとうございます！</div>
     <div class="done-count" id="done-count"></div>
+    <button class="tier-btn" onclick="openTierScreen()">🏆 自分の飴Tier表を作る</button>
   </div>
 
 </div>
@@ -520,6 +567,21 @@
   <div class="sending-main">あなたの回答を集計しています</div>
   <div class="sending-sub">（スプレッドシート集計のため<br>処理に時間がかかります）</div>
 </div>
+
+<!-- Tier表画面 -->
+<div class="tier-screen" id="tier-screen">
+  <div class="tier-screen-header">
+    <div class="tier-screen-title">🏆 あなたの飴Tier表</div>
+    <button class="tier-screen-close" onclick="closeTierScreen()">✕</button>
+  </div>
+  <div class="tier-table-wrap">
+    <div class="tier-table" id="tier-table-capture"></div>
+    <div class="tier-empty-note">※あなたの回答（もっと欲しい〜送ってほしくない）をもとに自動生成しています</div>
+  </div>
+  <button class="tier-save-btn" onclick="saveTierImage()">📷 画像として保存</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx45Ab0Npm57ZPBHd7pdKvqEjRvbYnOswoTy4aJG94F8MT9FzJeRR90LnJ_0oEsvkzvBA/exec';
@@ -786,6 +848,81 @@ function showDoneScreen(count) {
   done.classList.add('visible');
   const cnt = count || parseInt(document.getElementById('done-count').textContent) || 0;
   document.getElementById('done-count').textContent = cnt ? `${cnt}匹分の回答を送信しました` : '';
+}
+
+// ===== 飴Tier表 =====
+// 回答は5段階なので、そのままS/A/B/C/Dの5段階に対応させる（空になる段は作らない）
+const TIER_ORDER = ['S', 'A', 'B', 'C', 'D'];
+const TIER_COLORS = { S:'#ff7f7f', A:'#ffbf7f', B:'#ffff7f', C:'#bfff7f', D:'#7fff7f' };
+const SCORE_TO_TIER = { '7':'S', '3':'A', '0':'B', '-3':'C', '-7':'D' };
+
+function buildTierTable(results) {
+  const grouped = {};
+  TIER_ORDER.forEach(t => grouped[t] = []);
+
+  results.forEach(r => {
+    const tier = SCORE_TO_TIER[String(r.score)];
+    if(!tier) return;
+    const p = pokemon.find(pp => pp.id === r.id);
+    if(p) grouped[tier].push(p);
+  });
+
+  const table = document.getElementById('tier-table-capture');
+  table.innerHTML = '';
+
+  TIER_ORDER.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'tier-row';
+
+    const label = document.createElement('div');
+    label.className = 'tier-label';
+    label.style.background = TIER_COLORS[t];
+    label.textContent = t;
+    row.appendChild(label);
+
+    const iconsWrap = document.createElement('div');
+    iconsWrap.className = 'tier-icons';
+    grouped[t].forEach(p => {
+      const img = document.createElement('img');
+      img.src = p.img;
+      img.alt = p.name;
+      img.crossOrigin = 'anonymous';
+      iconsWrap.appendChild(img);
+    });
+    row.appendChild(iconsWrap);
+
+    table.appendChild(row);
+  });
+}
+
+function openTierScreen() {
+  const raw = localStorage.getItem(STORAGE_RESULT_KEY);
+  if(!raw) {
+    alert('回答データが見つかりませんでした。この機能が追加される前に送信された場合、データが残っていない可能性があります。');
+    return;
+  }
+  let results = [];
+  try { results = JSON.parse(raw); } catch(e) {}
+
+  buildTierTable(results);
+  document.getElementById('tier-screen').classList.add('visible');
+}
+
+function closeTierScreen() {
+  document.getElementById('tier-screen').classList.remove('visible');
+}
+
+async function saveTierImage() {
+  const target = document.getElementById('tier-table-capture');
+  try {
+    const canvas = await html2canvas(target, { backgroundColor: '#000000', scale: 2, useCORS: true });
+    const link = document.createElement('a');
+    link.download = 'ame_tier_list.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch(err) {
+    alert('画像の保存に失敗しました。スクリーンショットでの保存をお試しください。');
+  }
 }
 
 function init() {
