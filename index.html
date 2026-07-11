@@ -387,24 +387,45 @@
     background: var(--border); font-size: 16px; cursor: pointer; color: var(--text-sub);
   }
   .tier-table-wrap { padding: 1rem; }
+  .tier-capture-wrap { background: #000; }
   .tier-table { display: flex; flex-direction: column; background: #000; }
-  .tier-row { display: flex; min-height: 56px; }
+  .tier-row { display: flex; }
   .tier-label {
-    width: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-    font-weight: 800; font-size: 18px; color: #1a1a1a; border: 1px solid #000;
+    width: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 15px; color: #1a1a1a; border: 1px solid #000;
   }
   .tier-icons {
     flex: 1; display: flex; flex-wrap: wrap; align-content: flex-start;
-    gap: 2px; padding: 4px; background: #17171a; border: 1px solid #000;
+    gap: 1px; padding: 3px; background: #17171a; border: 1px solid #000;
   }
   .tier-icons img {
-    width: 44px; height: 44px; object-fit: contain;
-    background: #222; border-radius: 4px;
+    width: 34px; height: 34px; object-fit: contain;
+    background: #222; border-radius: 3px;
+  }
+  .tier-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 8px; background: #000; color: #9a9a9a;
+    font-size: 10px; letter-spacing: 0.02em;
   }
   .tier-empty-note { font-size: 11px; color: var(--text-sub); padding: 1rem 0.25rem 0; text-align: center; }
   .tier-save-btn {
     margin: 1rem; padding: 14px; border-radius: 12px; border: none;
     background: var(--green); color: #fff; font-family: inherit; font-size: 15px;
+    font-weight: 700; cursor: pointer;
+  }
+
+  /* Tier表：データが見つからない場合 */
+  .tier-no-data {
+    display: none; flex-direction: column; align-items: center; gap: 0.75rem;
+    text-align: center; padding: 2rem 0.5rem;
+  }
+  .tier-no-data.visible { display: flex; }
+  .tier-no-data-icon { font-size: 40px; }
+  .tier-no-data-title { font-size: 17px; font-weight: 800; color: var(--text); }
+  .tier-no-data-text { font-size: 13px; color: var(--text-sub); line-height: 1.7; }
+  .tier-no-data-btn {
+    margin-top: 0.5rem; padding: 12px 24px; border-radius: 12px; border: none;
+    background: var(--green); color: #fff; font-family: inherit; font-size: 14px;
     font-weight: 700; cursor: pointer;
   }
 </style>
@@ -575,10 +596,22 @@
     <button class="tier-screen-close" onclick="closeTierScreen()">✕</button>
   </div>
   <div class="tier-table-wrap">
-    <div class="tier-table" id="tier-table-capture"></div>
-    <div class="tier-empty-note">※あなたの回答（もっと欲しい〜送ってほしくない）をもとに自動生成しています</div>
+    <div class="tier-no-data" id="tier-no-data">
+      <div class="tier-no-data-icon">😢</div>
+      <div class="tier-no-data-title">ごめんなさい！</div>
+      <div class="tier-no-data-text">この回答データではTier表を作れませんでした。<br>実は少し前まで、Tier表を作るための仕組みが整っていませんでした（今は解決しています）。<br>お手数ですが、もう一度答え直していただければTier表が作れます。</div>
+      <button class="tier-no-data-btn" onclick="retryFromTierScreen()">もう一度回答する</button>
+    </div>
+    <div class="tier-capture-wrap" id="tier-capture-wrap">
+      <div class="tier-table" id="tier-table-capture"></div>
+      <div class="tier-footer">
+        <span id="tier-footer-tag">ポケスリ飴Tier表＠3周年</span>
+        <span id="tier-footer-date"></span>
+      </div>
+    </div>
+    <div class="tier-empty-note" id="tier-empty-note">※あなたの回答（もっと欲しい〜送ってほしくない）をもとに自動生成しています</div>
   </div>
-  <button class="tier-save-btn" onclick="saveTierImage()">📷 画像として保存</button>
+  <button class="tier-save-btn" id="tier-save-btn" onclick="saveTierImage()">📷 画像として保存</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -853,7 +886,7 @@ function showDoneScreen(count) {
 // ===== 飴Tier表 =====
 // 回答は5段階なので、そのままS/A/B/C/Dの5段階に対応させる（空になる段は作らない）
 const TIER_ORDER = ['S', 'A', 'B', 'C', 'D'];
-const TIER_COLORS = { S:'#ff7f7f', A:'#ffbf7f', B:'#ffff7f', C:'#bfff7f', D:'#7fff7f' };
+const TIER_COLORS = { S:'#ff7f7f', A:'#ffbf7f', B:'#ffff7f', C:'#7fff7f', D:'#7fbfff' };
 const SCORE_TO_TIER = { '7':'S', '3':'A', '0':'B', '-3':'C', '-7':'D' };
 
 function buildTierTable(results) {
@@ -896,24 +929,47 @@ function buildTierTable(results) {
 }
 
 function openTierScreen() {
+  document.getElementById('tier-screen').classList.add('visible');
+
   const raw = localStorage.getItem(STORAGE_RESULT_KEY);
+  const noData = document.getElementById('tier-no-data');
+  const captureWrap = document.getElementById('tier-capture-wrap');
+  const emptyNote = document.getElementById('tier-empty-note');
+  const saveBtn = document.getElementById('tier-save-btn');
+
   if(!raw) {
-    alert('回答データが見つかりませんでした。この機能が追加される前に送信された場合、データが残っていない可能性があります。');
+    noData.classList.add('visible');
+    captureWrap.style.display = 'none';
+    emptyNote.style.display = 'none';
+    saveBtn.style.display = 'none';
     return;
   }
+
+  noData.classList.remove('visible');
+  captureWrap.style.display = '';
+  emptyNote.style.display = '';
+  saveBtn.style.display = '';
+
   let results = [];
   try { results = JSON.parse(raw); } catch(e) {}
 
   buildTierTable(results);
-  document.getElementById('tier-screen').classList.add('visible');
+
+  const dateStr = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  document.getElementById('tier-footer-date').textContent = dateStr + ' 作成';
 }
 
 function closeTierScreen() {
   document.getElementById('tier-screen').classList.remove('visible');
 }
 
+function retryFromTierScreen() {
+  closeTierScreen();
+  resetAndStart();
+}
+
 async function saveTierImage() {
-  const target = document.getElementById('tier-table-capture');
+  const target = document.getElementById('tier-capture-wrap');
   try {
     const canvas = await html2canvas(target, { backgroundColor: '#000000', scale: 2, useCORS: true });
     const link = document.createElement('a');
